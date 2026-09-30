@@ -4,17 +4,18 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from structlog.contextvars import bind_contextvars
 
 from .agent import LabAgent
+from .dashboard import render_dashboard
 from .incidents import disable, enable, status
 from .logging_config import configure_logging, get_logger
 from .metrics import record_error, snapshot
 from .middleware import CorrelationIdMiddleware
 from .pii import hash_user_id, summarize_text
 from .schemas import ChatRequest, ChatResponse
-from .tracing import tracing_enabled
+from .tracing import get_langfuse_client, tracing_enabled
 
 configure_logging()
 log = get_logger()
@@ -23,6 +24,19 @@ agent = LabAgent()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Warm the managed-prompt cache once at startup. Individual requests still
+    # use the short bounded timeout in resolve_prompt(), avoiding false
+    # fallbacks when the Cloud service has a slow first connection.
+    if tracing_enabled():
+        get_langfuse_client().get_prompt(
+            os.getenv("LANGFUSE_PROMPT_NAME", "day13-chat"),
+            label=os.getenv("LANGFUSE_PROMPT_LABEL", "production"),
+            type="text",
+            fallback="Feature={{feature}}\nDocs={{docs}}\nQuestion={{message}}",
+            cache_ttl_seconds=60,
+            fetch_timeout_seconds=15,
+            max_retries=0,
+        )
     log.info(
         "app_started",
         service=os.getenv("APP_NAME", "day13-monitoring-llmops-lab"),
@@ -46,11 +60,21 @@ async def metrics() -> dict:
     return snapshot()
 
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard() -> str:
+    return render_dashboard()
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: Request, body: ChatRequest) -> ChatResponse:
-    # TODO: Enrich logs with request context (user_id_hash, session_id, feature, model, env)
-    # bind_contextvars(...)
-    
+    bind_contextvars(
+        user_id_hash=hash_user_id(body.user_id),
+        session_id=body.session_id,
+        feature=body.feature,
+        model=agent.model,
+        env=os.getenv("APP_ENV", "dev"),
+    )
+
     log.info(
         "request_received",
         service="api",
