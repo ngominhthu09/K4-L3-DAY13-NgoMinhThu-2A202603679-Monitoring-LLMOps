@@ -1,4 +1,0 @@
-Command: python -m pytest -q
-
-........................                                                 [100%]
-24 passed in 3.06s
