@@ -9,6 +9,7 @@
 - **Commit code đã kiểm chứng ở evidence #01:** `38cf7844b22b82d2f78fa14d35188be81c048656`; SHA nộp sẽ được cập nhật sau commit evidence cuối.
 - **Challenge ID:** `K4-l3b-challenge-s05`
 - **Tên project Langfuse cá nhân:** `day13-k4-l3b-2A202602679`.
+-Commit SHA : c206205327f1180277d536e4c1b0c3267bfdccd2
 
 ## 2. Evidence index
 
